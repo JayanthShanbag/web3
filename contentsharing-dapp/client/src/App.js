@@ -3,7 +3,7 @@ import Web3 from "web3";
 import ContentSharingABI from "./ContentSharing.json";
 import "./App.css";
 
-const contractAddress = "0x4bFcFbF57Be6B4Fac330D0Da0D0796516548bEeC";
+const contractAddress = "0x9D84E3d57ca1979cC10ce4ed22f7d8DBcD1d65C0";
 
 const MAX_CHAR = 500;
 
@@ -31,7 +31,7 @@ function App() {
         let tempPosts = [];
         for (let i = 0; i < count; i++) {
           const post = await contract.methods.posts(i).call();
-          tempPosts.push(post);
+          tempPosts.push({ ...post, id: i });
         }
         setPosts(tempPosts);
         setFilteredPosts(tempPosts);
@@ -42,13 +42,10 @@ function App() {
     load();
   }, []);
 
-  // Filter posts by group when selectedGroup changes or posts update
   useEffect(() => {
     if (selectedGroup === "All Posts") {
       setFilteredPosts(posts);
     } else {
-      // Assume each post has a "group" property (if your contract doesn't store this, 
-      // you will need to extend it to support groups)
       setFilteredPosts(posts.filter(post => post.group === selectedGroup));
     }
   }, [selectedGroup, posts]);
@@ -70,7 +67,7 @@ function App() {
 
     const reader = new FileReader();
     reader.onloadend = () => {
-      setImageData(reader.result); // base64 string
+      setImageData(reader.result);
     };
     reader.readAsDataURL(file);
   };
@@ -84,18 +81,15 @@ function App() {
     }
 
     try {
-      // You’d want to save imageData somewhere persistent if real — for now just local
-      // Also need to extend smart contract to accept group and image URL or hash
-
-      // For demo, just send post content only to contract
       await contract.methods.createPost(newPost).send({ from: account });
 
-      // Add group and imageData manually in UI (since contract probably doesn't store it)
       const postToAdd = {
         author: account,
         content: newPost,
         group: selectedGroup,
         image: imageData,
+        removed: false,
+        id: posts.length
       };
 
       setPosts([...posts, postToAdd]);
@@ -104,6 +98,23 @@ function App() {
     } catch (err) {
       console.error("Transaction failed:", err);
       alert("Transaction failed. See console.");
+    }
+  };
+
+  const handleFlagPost = async (postId) => {
+    try {
+      await contract.methods.flagPost(postId).send({ from: account });
+      alert("Post flagged for review.");
+      // Refresh posts
+      const count = await contract.methods.getPostCount().call();
+      let tempPosts = [];
+      for (let i = 0; i < count; i++) {
+        const post = await contract.methods.posts(i).call();
+        tempPosts.push({ ...post, id: i });
+      }
+      setPosts(tempPosts);
+    } catch (err) {
+      console.error("Error flagging post:", err);
     }
   };
 
@@ -163,14 +174,18 @@ function App() {
 
         <div className="posts-list">
           {filteredPosts.length === 0 && <p>No posts in this group.</p>}
-          {filteredPosts.map((post, index) => (
-            <div key={index} className="post-card">
-              <p className="post-author">{post.author}</p>
-              <p className="post-content">{post.content}</p>
-              {post.image && <img src={post.image} alt="User upload" className="post-image" />}
-              {post.group && <p className="post-group">Group: {post.group}</p>}
-            </div>
-          ))}
+          {filteredPosts.map((post, index) => {
+            if (post.removed) return null;
+            return (
+              <div key={index} className="post-card">
+                <p className="post-author">{post.author}</p>
+                <p className="post-content">{post.content}</p>
+                {post.image && <img src={post.image} alt="User upload" className="post-image" />}
+                {post.group && <p className="post-group">Group: {post.group}</p>}
+                <button onClick={() => handleFlagPost(post.id)}>🚩 Flag as Inappropriate</button>
+              </div>
+            );
+          })}
         </div>
       </main>
     </div>
